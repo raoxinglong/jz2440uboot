@@ -90,6 +90,7 @@ _bss_start:
 _bss_end:
 	.word _end
 
+
 #ifdef CONFIG_USE_IRQ
 /* IRQ stack memory (calculated at run-time) */
 .globl IRQ_STACK_START
@@ -117,6 +118,10 @@ reset:
 	msr	cpsr,r0
 
 /* turn off the watchdog */
+
+	mov	r1, #0x53000000
+	mov	r2, #0x0
+	str	r2, [r1]
 #if defined(CONFIG_S3C2400)
 # define pWTCON		0x15300000
 # define INTMSK		0x14400008	/* Interupt-Controller base addresses */
@@ -145,11 +150,16 @@ reset:
 	str	r1, [r0]
 # endif
 
+
+/*modification*/
+#if 0
 	/* FCLK:HCLK:PCLK = 1:2:4 */
 	/* default FCLK is 120 MHz ! */
 	ldr	r0, =CLKDIVN
 	mov	r1, #3
 	str	r1, [r0]
+#endif
+
 #endif	/* CONFIG_S3C2400 || CONFIG_S3C2410 */
 
 	/*
@@ -157,28 +167,15 @@ reset:
 	 * not when booting from ram!
 	 */
 #ifndef CONFIG_SKIP_LOWLEVEL_INIT
-	bl	cpu_init_crit
+	/*modification*/
+	adr     r0, _start              /* r0 <- current position of code   */
+	ldr     r1, _TEXT_BASE          /* test if we run from flash or RAM */
+	cmp     r0, r1                  /* don't reloc during debug         */
+	blne	cpu_init_crit
 #endif
 
-#ifndef CONFIG_SKIP_RELOCATE_UBOOT
-relocate:				/* relocate U-Boot to RAM	    */
-	adr	r0, _start		/* r0 <- current position of code   */
-	ldr	r1, _TEXT_BASE		/* test if we run from flash or RAM */
-	cmp     r0, r1                  /* don't reloc during debug         */
-	beq     stack_setup
 
-	ldr	r2, _armboot_start
-	ldr	r3, _bss_start
-	sub	r2, r3, r2		/* r2 <- size of armboot            */
-	add	r2, r0, r2		/* r2 <- source end address         */
-
-copy_loop:
-	ldmia	r0!, {r3-r10}		/* copy from source address [r0]    */
-	stmia	r1!, {r3-r10}		/* copy to   target address [r1]    */
-	cmp	r0, r2			/* until source end addreee [r2]    */
-	ble	copy_loop
-#endif	/* CONFIG_SKIP_RELOCATE_UBOOT */
-
+/*modification*/
 	/* Set up the stack						    */
 stack_setup:
 	ldr	r0, _TEXT_BASE		/* upper 128 KiB: relocated uboot   */
@@ -188,6 +185,24 @@ stack_setup:
 	sub	r0, r0, #(CONFIG_STACKSIZE_IRQ+CONFIG_STACKSIZE_FIQ)
 #endif
 	sub	sp, r0, #12		/* leave 3 words for abort-stack    */
+
+#ifndef CONFIG_SKIP_LOWLEVEL_INIT
+	bl clock_init			/*Above disable set CLKDIVN, so we should set clock in clock_init function in board/my2440/boot_init.c*/
+#endif 
+
+
+#ifndef CONFIG_SKIP_RELOCATE_UBOOT
+relocate:				/* relocate U-Boot to RAM	    */
+	adr	r0, _start		/* r0 <- current position of code   */
+	ldr	r1, _TEXT_BASE		/* test if we run from flash or RAM */
+	cmp     r0, r1                  /* don't reloc during debug         */
+	beq     clear_bss		/*modification  stack_setup to clear_bss*/
+
+	ldr	r2, _armboot_start
+	ldr	r3, _bss_start
+	sub	r2, r3, r2		/* r2 <- size of armboot            */
+	bl	CopyCode2Ram		/* modification  r0: source, r1: dest, r2: size */
+#endif	/* CONFIG_SKIP_RELOCATE_UBOOT */
 
 clear_bss:
 	ldr	r0, _bss_start		/* find start of bss segment        */
